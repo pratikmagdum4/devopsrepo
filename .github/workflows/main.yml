@@ -1,8 +1,10 @@
 name: Deploy to AWS
+
 on:
   push:
     branches:
       - "main"
+
 env:
   AWS_REGION: ap-south-1
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
@@ -16,21 +18,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
       - name: Login to AWS ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-      - name: Build, push docker image
+
+      - name: Build and Push Docker image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPOSITORY: devopsrepo
+          REPOSITORY: devopsrepo  # Ensure this matches below
           IMAGE_TAG: ${{ github.sha }}
-        run: |-
+        run: |
           docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+
       - name: Deploy docker image to EC2
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPOSITORY: aws-deploy
+          REPOSITORY: devopsrepo
           IMAGE_TAG: ${{ github.sha }}
           AWS_DEFAULT_REGION: ap-south-1
         uses: appleboy/ssh-action@master
@@ -39,11 +44,10 @@ jobs:
           username: ubuntu
           key: ${{ env.PRIVATE_SSH_KEY }}
           envs: PRIVATE_SSH_KEY,REGISTRY,REPOSITORY,IMAGE_TAG,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,AWS_REGION
-          script: |-
+          script: |
             sudo apt update
-            sudo apt install docker.io -y
-            sudo apt install awscli -y
-            sudo $(aws ecr get-login --no-include-email --region ap-south-1);
+            sudo apt install -y docker.io awscli
+            aws ecr get-login-password --region ap-south-1 | sudo docker login --username AWS --password-stdin $REGISTRY
             sudo docker stop myappcontainer || true
             sudo docker rm myappcontainer || true
             sudo docker pull $REGISTRY/$REPOSITORY:$IMAGE_TAG
